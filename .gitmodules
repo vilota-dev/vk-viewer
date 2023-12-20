@@ -1,0 +1,3 @@
+[submodule "thirdparty/ecal_common"]
+	path = thirdparty/ecal_common
+	url = https://github.com/vilota-dev/ecal-common.git
