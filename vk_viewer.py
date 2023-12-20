@@ -13,11 +13,37 @@ capnp.add_import_hook(['thirdparty/ecal_common/src/capnp'])
 
 import image_capnp as eCALImage
 import imu_capnp as eCALImu
+import tagdetection_capnp as eCALTagDetection
 
 from thirdparty.ecal_common.python.capnp_subscriber import CapnpSubscriber
 
 # visualisation tools
 import rerun as rr
+
+def image_msg_to_cvmat(imageMsg):
+    if (imageMsg.encoding == "mono8"):
+
+        mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
+        mat = mat.reshape((imageMsg.height, imageMsg.width, 1))
+
+        # cv2.imshow("mono8", mat)
+        # cv2.waitKey(3)
+    elif (imageMsg.encoding == "yuv420"):
+        mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
+        mat = mat.reshape((imageMsg.height * 3 // 2, imageMsg.width, 1))
+
+        mat = cv2.cvtColor(mat, cv2.COLOR_YUV2BGR_IYUV)
+
+    elif (imageMsg.encoding == "bgr8"):
+        mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
+        mat = mat.reshape((imageMsg.height, imageMsg.width, 3))
+    elif (imageMsg.encoding == "jpeg"):
+        mat_jpeg = np.frombuffer(imageMsg.data, dtype=np.uint8)
+        mat = cv2.imdecode(mat_jpeg, cv2.IMREAD_COLOR)
+    else:
+        raise RuntimeError("unknown encoding: " + imageMsg.encoding)
+    
+    return mat
 
 class ImageLogger:
     def __init__(self, topic_list, rr) -> None:
@@ -33,39 +59,20 @@ class ImageLogger:
 
         with eCALImage.Image.from_bytes(msg) as imageMsg:
 
-            if (imageMsg.encoding == "mono8"):
+            mat = image_msg_to_cvmat(imageMsg)
 
-                mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
-                mat = mat.reshape((imageMsg.height, imageMsg.width, 1))
-
-                # cv2.imshow("mono8", mat)
-                # cv2.waitKey(3)
-            elif (imageMsg.encoding == "yuv420"):
-                mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
-                mat = mat.reshape((imageMsg.height * 3 // 2, imageMsg.width, 1))
-
-                mat = cv2.cvtColor(mat, cv2.COLOR_YUV2BGR_IYUV)
-
-            elif (imageMsg.encoding == "bgr8"):
-                mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
-                mat = mat.reshape((imageMsg.height, imageMsg.width, 3))
-            elif (imageMsg.encoding == "jpeg"):
-                mat_jpeg = np.frombuffer(imageMsg.data, dtype=np.uint8)
-                mat = cv2.imdecode(mat_jpeg, cv2.IMREAD_COLOR)
-            else:
-                raise RuntimeError("unknown encoding: " + imageMsg.encoding)
+            rr.set_time_nanos("host_monotonic_time", imageMsg.header.stamp)
         
-        # we have to ways to prevent all images drawn to the same screen
-        rr.log(topic_name + "/image", rr.DisconnectedSpace())
-        # rr.log(topic_name + "/image", rr.Pinhole(focal_length=300, width=imageMsg.width*2//3, height=imageMsg.height), timeless=True)
-        
-        rr.log(topic_name + "/image", rr.Image(mat[:, :mat.shape[1]*2//3]))
+            # we have to ways to prevent all images drawn to the same screen
+            rr.log(topic_name, rr.DisconnectedSpace())
+            # rr.log(topic_name + "/image", rr.Pinhole(focal_length=300, width=imageMsg.width*2//3, height=imageMsg.height), timeless=True)
+            
+            rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]*2//3]))
 
-        # some debugging drawings
-        # rr.log(topic_name + "/image", rr.Boxes2D(mins=[10,20], sizes=[20,40]))
-        # rr.log(topic_name + "/image", rr.LineStrips2D([[[100, 100], [200,300], [400, 100], [600, 200]]]))
-        
-
+            # some debugging drawings
+            # rr.log(topic_name + "/image", rr.Boxes2D(mins=[10,20], sizes=[20,40]))
+            rr.log(topic_name, rr.LineStrips2D([[[100, 100], [200,300], [400, 100], [600, 200]]]))
+    
 
 
 def main():  
@@ -80,8 +87,9 @@ def main():
 
     rr.init("vk_viewer_rr")
     rr.spawn(memory_limit='25%')
+    rr.set_time_seconds("host_monotonic_time", time.monotonic_ns())
 
-    image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"], rr)
+    image_logger = ImageLogger(["S0/camb/image", "S0/camc/image", "S0/camd/image"], rr)
     
     # idle main thread
     while ecal_core.ok():
