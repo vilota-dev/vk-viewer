@@ -105,6 +105,8 @@ class TagDetectionLogger:
 
             rr.set_time_nanos("host_monotonic_time", tagsMsg.header.stamp)
 
+            print(tagsMsg)
+
             # obtain image size
             if tagsMsg.image.mipMapLevels == 0:
                 img_width = tagsMsg.image.width
@@ -168,10 +170,10 @@ class TagDetectionLogger:
                     print(f"initialised writer to log tag detection into file {filename}")
 
                     self.writer.start()
-                    # self.schema_id = self.writer.register_schema(name="TagDetections", encoding="", data="")
+                    self.schema_id = self.writer.register_schema(name="TagDetections", encoding="capnproto", data="".encode('utf-8'))
                     
                 if topic_name not in self.channel_ids:
-                    self.channel_ids[topic_name] = self.writer.register_channel(schema_id=0, topic=topic_name, message_encoding="capnproto")
+                    self.channel_ids[topic_name] = self.writer.register_channel(schema_id=self.schema_id, topic=topic_name, message_encoding="capnproto")
                 
                 self.writer.add_message(channel_id=self.channel_ids[topic_name], log_time=stamp_ns, publish_time=stamp_ns, data=msg_bytes)
 
@@ -197,11 +199,12 @@ def main():
     ecal_core.set_process_state(1, 1, "I feel good")
 
     rr.init("vk_viewer_rr")
-    rr.spawn(memory_limit='25%')
+    # rr.spawn(memory_limit='25%')
+    rr.serve()
     rr.set_time_seconds("host_monotonic_time", time.monotonic_ns())
 
     image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"], rr)
-    tags_logger = TagDetectionLogger(["S0/camb/tag_detection", "S0/camc/tag_detection", "S0/camd/tag_detection"], rr)
+    tags_logger = TagDetectionLogger(["S0/camb/tag_detection", "S0/camc/tag_detection", "S0/camd/tags"], rr)
 
 
     def handler(signum, frame):
