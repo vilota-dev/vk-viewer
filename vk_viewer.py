@@ -14,6 +14,7 @@ capnp.add_import_hook(['thirdparty/ecal_common/src/capnp'])
 import image_capnp as eCALImage
 import imu_capnp as eCALImu
 import tagdetection_capnp as eCALTagDetection
+import odometry3d_capnp as eCALOdometry3d
 
 from thirdparty.ecal_common.python.capnp_subscriber import CapnpSubscriber
 
@@ -27,8 +28,7 @@ from mcap.writer import Writer
 import datetime
 import threading
 class ImageLogger:
-    def __init__(self, topic_list, rr) -> None:
-        self.rr = rr
+    def __init__(self, topic_list) -> None:
         self.subs = []
         for topic in topic_list:
             sub = CapnpSubscriber("Image", topic)
@@ -81,8 +81,7 @@ class ImageLogger:
         return mat
     
 class TagDetectionLogger:
-    def __init__(self, topic_list, rr) -> None:
-        self.rr = rr
+    def __init__(self, topic_list) -> None:
         self.subs = []
         for topic in topic_list:
             sub = CapnpSubscriber("TagDetections", topic)
@@ -105,7 +104,7 @@ class TagDetectionLogger:
 
             rr.set_time_nanos("host_monotonic_time", tagsMsg.header.stamp)
 
-            print(tagsMsg)
+            # print(tagsMsg)
 
             # obtain image size
             if tagsMsg.image.mipMapLevels == 0:
@@ -185,7 +184,55 @@ class TagDetectionLogger:
         self.stopping = True
         print("stopping set to true")
 
+class OdometryLogeer:
+    def __init__(self, topic_list) -> None:
+        self.subs = []
+        self.counts = {}
+        self.tracks = {}
+        self.total_distance = {}
+        for topic in topic_list:
+            sub = CapnpSubscriber("Odometry3d", topic)
+            self.subs.append(sub)
+            sub.set_callback(self.callback)
 
+    def callback(self, topic_type, topic_name, msg, ts):
+        # print(f"callback of topic {topic_name}")
+
+        with eCALOdometry3d.Odometry3d.from_bytes(msg) as odomMsg:
+            t_body = [odomMsg.pose.position.x, odomMsg.pose.position.y, odomMsg.pose.position.z]
+            q_body = [odomMsg.pose.orientation.x, odomMsg.pose.orientation.y, odomMsg.pose.orientation.z, odomMsg.pose.orientation.w]
+
+            # print(f"position = {odomMsg.pose.position.x}, {odomMsg.pose.position.y}, {odomMsg.pose.position.z}")
+            # print(f"orientation = {odomMsg.pose.orientation.w}, {odomMsg.pose.orientation.x}, {odomMsg.pose.orientation.y}, {odomMsg.pose.orientation.z}")
+
+            if topic_name not in self.counts:
+                self.counts[topic_name] = 0
+                self.tracks[topic_name] = []
+                self.tracks[topic_name].append(t_body)
+                self.total_distance[topic_name] = 0
+                rr.log("S0", rr.ViewCoordinates.FLU, timeless=True)
+            else:
+                # check for distance, do not draw for <0.05m
+                distance = np.linalg.norm(np.array(self.tracks[topic_name][-1]) - np.array(t_body))
+
+                if distance > 0.05:
+                    self.tracks[topic_name].append(t_body)
+                    self.total_distance[topic_name] += distance
+                    # print(self.tracks[topic_name])
+                    rr.log("S0/tracks", rr.LineStrips3D(self.tracks[topic_name]))
+
+            rr.set_time_nanos("host_monotonic_time", odomMsg.header.stamp)
+            rr.log("S0/body", rr.Transform3D(translation=t_body, rotation=rr.Quaternion(xyzw=q_body)))
+
+            if (self.counts[topic_name] % 50) == 0:
+                rr.log("logs", rr.TextLog(f"current pos [{t_body[0]:.2f}, {t_body[1]:.2f}, {t_body[2]:.2f}], total distance = {self.total_distance[topic_name]:.1f}", level=rr.TextLogLevel.DEBUG))
+
+            self.counts[topic_name] += 1
+
+        #     rr.log(
+        #     "camera", rr.Transform3D(translation=image.tvec, rotation=rr.Quaternion(xyzw=quat_xyzw), from_parent=True)
+        # )
+        # rr.log("camera", rr.ViewCoordinates.RDF, timeless=True)  # X=Right, Y=Down, Z=Forward
 
 
 def main():  
@@ -199,12 +246,13 @@ def main():
     ecal_core.set_process_state(1, 1, "I feel good")
 
     rr.init("vk_viewer_rr")
-    # rr.spawn(memory_limit='25%')
-    rr.serve()
+    rr.spawn(memory_limit='10%')
+    # rr.serve()
     rr.set_time_seconds("host_monotonic_time", time.monotonic_ns())
 
-    image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"], rr)
-    tags_logger = TagDetectionLogger(["S0/camb/tag_detection", "S0/camc/tag_detection", "S0/camd/tags"], rr)
+    image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"])
+    tags_logger = TagDetectionLogger(["S0/camb/tag_detection", "S0/camc/tag_detection", "S0/camd/tags"])
+    odometry_logger = OdometryLogeer(["S0/vio_odom"])
 
 
     def handler(signum, frame):
