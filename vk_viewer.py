@@ -6,6 +6,7 @@ import time
 import capnp
 import numpy as np
 import cv2
+from scipy.spatial import ConvexHull
 
 import ecal.core.core as ecal_core
 
@@ -116,11 +117,24 @@ class TagDetectionLogger:
             ids = []
             corners_list = []
             radiis = []
+            grid_points = {}
 
             for tag in tagsMsg.tags:
                 ids.append(tag.id)
                 radiis.append(1.0)
-                corners_list.append(self.decode_tag_corners(tag, img_width, image_height))
+                corners = self.decode_tag_corners(tag, img_width, image_height)
+                corners_list.append(corners)
+                if tag.gridId not in grid_points:
+                    grid_points[tag.gridId] = []
+                grid_points[tag.gridId].append(corners)
+
+            for grid_id in grid_points:
+                points = np.array(grid_points[grid_id]).flatten().reshape(-1, 2)
+                hull = ConvexHull(points)
+                # add start point to the end
+                hull_points = points[hull.vertices, :]
+                hull_points = np.vstack((hull_points, hull_points[0, :]))
+                rr.log(topic_name+"/grid", rr.LineStrips2D([hull_points.tolist()], class_ids=[grid_id], radii=[1]))
 
             rr.log(topic_name, rr.LineStrips2D(corners_list, class_ids=ids, radii=radiis))
             # https://ref.rerun.io/docs/python/0.11.0/common/archetypes/#rerun.archetypes.LineStrips2D
