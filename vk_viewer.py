@@ -250,6 +250,36 @@ def main():
     # rr.serve()
     rr.set_time_seconds("host_monotonic_time", time.monotonic_ns())
 
+    rr.log("S0", rr.ViewCoordinates.FLU, timeless=True)
+    points = []
+
+    # draw grid with a single connected lines
+    min_x = -50
+    max_x = 50
+    min_y = -50
+    max_y = 50
+    step = 5
+
+    even_line = True
+    for x in range(min_x, max_x + step, step):
+        if even_line:
+            line = [[x, max_y, 0], [x, min_y, 0]]
+        else:
+            line = [[x, min_y, 0], [x, max_y, 0]]
+        even_line = not even_line
+        points += line
+
+    even_line = True
+    for y in range(min_y, max_y + step, step):
+        if even_line:
+            line = [[min_x, y, 0], [max_x, y, 0]]
+        else:
+            line = [[max_x, y, 0], [min_x, y, 0]]
+        even_line = not even_line
+        points += line
+
+    rr.log("S0/grid", rr.LineStrips3D(points, radii=[0.01]))
+
     image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"])
     tags_logger = TagDetectionLogger(["S0/camb/tag_detection", "S0/camc/tag_detection", "S0/camd/tags"])
     odometry_logger = OdometryLogeer(["S0/vio_odom"])
