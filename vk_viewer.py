@@ -162,17 +162,21 @@ class TagDetectionLogger:
                     radiis.append(1.0)
                     corners = self.decode_tag_corners(tag, img_width, image_height)
                     corners_list.append(corners)
-                    if tag.gridId not in grid_points and tag.gridId > 0:
-                        grid_points[tag.gridId] = []
-                    grid_points[tag.gridId].append(corners)
 
+                    # grid logic
+                    if tag.gridId > 0: # 0 means tag has no associated grid
+                        if tag.gridId not in grid_points:
+                            grid_points[tag.gridId] = []
+                        grid_points[tag.gridId].append(corners)
+
+                # visualising grid
                 for grid_id in grid_points:
                     points = np.array(grid_points[grid_id]).flatten().reshape(-1, 2)
                     hull = ConvexHull(points)
                     # add start point to the end
                     hull_points = points[hull.vertices, :]
                     hull_points = np.vstack((hull_points, hull_points[0, :]))
-                    rr.log(topic_name+"/grid", rr.LineStrips2D([hull_points.tolist()], class_ids=[grid_id], radii=[1]))
+                    rr.log(topic_name+"/grid", rr.LineStrips2D([hull_points.tolist()], class_ids=[grid_id], radii=[2]))
 
                 if len(grid_points) == 0:
                     rr.log(topic_name+"/grid", rr.LineStrips2D([]))
@@ -182,11 +186,11 @@ class TagDetectionLogger:
 
                 if has_tags:
                     self.tag_frame_count += 1
-                    rr.log(topic_name, rr.AnyValues(tag_frame_count=self.tag_frame_count))
+                rr.log(topic_name, rr.AnyValues(tag_frame_count=self.tag_frame_count))
 
                 if has_grids:
                     self.grid_frame_count += 1
-                    rr.log(topic_name, rr.AnyValues(grid_frame_count=self.grid_frame_count))
+                rr.log(topic_name, rr.AnyValues(grid_frame_count=self.grid_frame_count))
 
                 if not self.queue.full():
                     stamp_ns = tagsMsg.header.stamp
