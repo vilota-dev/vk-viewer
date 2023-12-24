@@ -100,7 +100,8 @@ class TagDetectionLogger:
     def callback(self, topic_type, topic_name, msg, ts):
         # print(f"callback of topic {topic_name}")
 
-        rr.log(topic_name, rr.Clear(recursive=True))
+        # we should not clear, otherwise the whole history was cleared
+        # rr.log(topic_name, rr.Clear(recursive=True))
 
         with eCALTagDetection.TagDetections.from_bytes(msg) as tagsMsg:
             # print("tag detection received")
