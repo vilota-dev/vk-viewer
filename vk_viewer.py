@@ -200,7 +200,7 @@ class TagDetectionLogger:
 
                 mat = ImageLogger.image_msg_to_cvmat(imgMsg)
                 
-                rr.log(topic_name + "/tags", rr.Image(mat[:, :mat.shape[1]*2//3]))
+                rr.log(topic_name + "/tags/image", rr.Image(mat[:, :mat.shape[1]*2//3]))
 
     def decode_tag_corners(self, tag, img_width, img_height):
         corners = np.zeros((5,2))
