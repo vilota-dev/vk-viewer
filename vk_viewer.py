@@ -17,7 +17,9 @@ import imu_capnp as eCALImu
 import tagdetection_capnp as eCALTagDetection
 import odometry3d_capnp as eCALOdometry3d
 
-from thirdparty.ecal_common.python.capnp_subscriber import CapnpSubscriber
+from capnp_subscriber import CapnpSubscriber
+
+from sync_utils import SyncedSubscriber
 
 # visualisation tools
 import rerun as rr
@@ -81,13 +83,34 @@ class ImageLogger:
         
         return mat
     
+def remove_after_last_slash(input_string):
+    last_slash_index = input_string.rfind("/")
+    if last_slash_index != -1:
+        result_string = input_string[:last_slash_index]
+        return result_string
+    else:
+        # If there is no "/" in the string, return the original string
+        return input_string
+
+    
 class TagDetectionLogger:
     def __init__(self, topic_list) -> None:
         self.subs = []
+        self.tag_frame_count = 0
+        self.grid_frame_count = 0
         for topic in topic_list:
-            sub = CapnpSubscriber("TagDetections", topic)
+            types = ["TagDetections", "Image"]
+            topics = [topic, remove_after_last_slash(topic)]
+            type_classes = [eCALTagDetection.TagDetections, eCALImage.Image]
+
+            sub = SyncedSubscriber(types, topics, type_classes)
             self.subs.append(sub)
-            sub.set_callback(self.callback)
+
+            sub.register_callback(self.callback)
+
+            # sub = CapnpSubscriber("TagDetections", topic)
+            # self.subs.append(sub)
+            # sub.set_callback(self.callback)
 
         # just to make some decoupling of the disk writing and visualisation
         self.queue = queue.Queue(10)
@@ -97,54 +120,83 @@ class TagDetectionLogger:
         self.thread = threading.Thread(target=self.writer_thread)
         self.thread.start()
 
-    def callback(self, topic_type, topic_name, msg, ts):
-        # print(f"callback of topic {topic_name}")
+    def callback(self, assemble, index):
 
-        # we should not clear, otherwise the whole history was cleared
-        # rr.log(topic_name, rr.Clear(recursive=True))
+        has_tags = False
+        has_grids = False
 
-        with eCALTagDetection.TagDetections.from_bytes(msg) as tagsMsg:
-            # print("tag detection received")
+        # skip non detection for recording and viewing
+        for topic_name in assemble:
+            if "tags" in topic_name:
+                tagsMsg, msgRaw = assemble[topic_name]
+                for tag in tagsMsg.tags:
+                    has_tags = True
+                    if tag.gridId > 0: # proper hash checked
+                        has_grids = True
 
-            rr.set_time_nanos("host_monotonic_time", tagsMsg.header.stamp)
+        if not has_tags:
+            return
 
-            # print(tagsMsg)
+        rr.set_time_nanos("host_monotonic_time", index)
 
-            # obtain image size
-            if tagsMsg.image.mipMapLevels == 0:
-                img_width = tagsMsg.image.width
-            else:
-                img_width = tagsMsg.image.width * 2 // 3
-            image_height = tagsMsg.image.height
+        for topic_name in assemble:
+            if "tags" in topic_name:
 
-            ids = []
-            corners_list = []
-            radiis = []
-            grid_points = {}
+                rr.log(topic_name, rr.DisconnectedSpace())
 
-            for tag in tagsMsg.tags:
-                ids.append(tag.id)
-                radiis.append(1.0)
-                corners = self.decode_tag_corners(tag, img_width, image_height)
-                corners_list.append(corners)
-                if tag.gridId not in grid_points:
-                    grid_points[tag.gridId] = []
-                grid_points[tag.gridId].append(corners)
+                tagsMsg, msgRaw = assemble[topic_name]
+                # obtain image size
+                if tagsMsg.image.mipMapLevels == 0:
+                    img_width = tagsMsg.image.width
+                else:
+                    img_width = tagsMsg.image.width * 2 // 3
+                image_height = tagsMsg.image.height
 
-            for grid_id in grid_points:
-                points = np.array(grid_points[grid_id]).flatten().reshape(-1, 2)
-                hull = ConvexHull(points)
-                # add start point to the end
-                hull_points = points[hull.vertices, :]
-                hull_points = np.vstack((hull_points, hull_points[0, :]))
-                rr.log(topic_name+"/grid", rr.LineStrips2D([hull_points.tolist()], class_ids=[grid_id], radii=[1]))
+                ids = []
+                corners_list = []
+                radiis = []
+                grid_points = {}
 
-            rr.log(topic_name, rr.LineStrips2D(corners_list, class_ids=ids, radii=radiis))
-            # https://ref.rerun.io/docs/python/0.11.0/common/archetypes/#rerun.archetypes.LineStrips2D
+                for tag in tagsMsg.tags:
+                    ids.append(tag.id)
+                    radiis.append(1.0)
+                    corners = self.decode_tag_corners(tag, img_width, image_height)
+                    corners_list.append(corners)
+                    if tag.gridId not in grid_points and tag.gridId > 0:
+                        grid_points[tag.gridId] = []
+                    grid_points[tag.gridId].append(corners)
 
-            if not self.queue.full():
-                stamp_ns = tagsMsg.header.stamp
-                self.queue.put((topic_name, stamp_ns, msg))
+                for grid_id in grid_points:
+                    points = np.array(grid_points[grid_id]).flatten().reshape(-1, 2)
+                    hull = ConvexHull(points)
+                    # add start point to the end
+                    hull_points = points[hull.vertices, :]
+                    hull_points = np.vstack((hull_points, hull_points[0, :]))
+                    rr.log(topic_name+"/grid", rr.LineStrips2D([hull_points.tolist()], class_ids=[grid_id], radii=[1]))
+
+                if len(grid_points) == 0:
+                    rr.log(topic_name+"/grid", rr.LineStrips2D([]))
+
+                rr.log(topic_name, rr.LineStrips2D(corners_list, class_ids=ids, radii=radiis))
+                # https://ref.rerun.io/docs/python/0.11.0/common/archetypes/#rerun.archetypes.LineStrips2D
+
+                if has_tags:
+                    self.tag_frame_count += 1
+                    rr.log(topic_name, rr.AnyValues(tag_frame_count=self.tag_frame_count))
+
+                if has_grids:
+                    self.grid_frame_count += 1
+                    rr.log(topic_name, rr.AnyValues(grid_frame_count=self.grid_frame_count))
+
+                if not self.queue.full():
+                    stamp_ns = tagsMsg.header.stamp
+                    self.queue.put((topic_name, stamp_ns, msgRaw))
+            else: # assume image
+                imgMsg, _ = assemble[topic_name]
+
+                mat = ImageLogger.image_msg_to_cvmat(imgMsg)
+                
+                rr.log(topic_name + "/tags", rr.Image(mat[:, :mat.shape[1]*2//3]))
 
     def decode_tag_corners(self, tag, img_width, img_height):
         corners = np.zeros((5,2))
@@ -193,8 +245,9 @@ class TagDetectionLogger:
                 
                 self.writer.add_message(channel_id=self.channel_ids[topic_name], log_time=stamp_ns, publish_time=stamp_ns, data=msg_bytes)
 
-            self.writer.finish()
-            print("writer finishes")
+            if self.writer is not None:
+                self.writer.finish()
+                print("writer finishes")
             
 
     def stop_writer(self):
@@ -298,7 +351,7 @@ def main():
     rr.log("S0/grid", rr.LineStrips3D(points, radii=[0.01]))
 
     image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"])
-    tags_logger = TagDetectionLogger(["S0/camb/tag_detection", "S0/camc/tag_detection", "S0/camd/tags"])
+    tags_logger = TagDetectionLogger(["S0/camb/tags", "S0/camc/tags", "S0/camd/tags"])
     odometry_logger = OdometryLogeer(["S0/vio_odom"])
 
 
