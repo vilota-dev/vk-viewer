@@ -169,6 +169,10 @@ class TagDetectionLogger:
                             grid_points[tag.gridId] = []
                         grid_points[tag.gridId].append(corners)
 
+                grid_corners = []
+                grid_radiis = []
+                grid_classes = []
+
                 # visualising grid
                 for grid_id in grid_points:
                     points = np.array(grid_points[grid_id]).flatten().reshape(-1, 2)
@@ -176,11 +180,11 @@ class TagDetectionLogger:
                     # add start point to the end
                     hull_points = points[hull.vertices, :]
                     hull_points = np.vstack((hull_points, hull_points[0, :]))
-                    rr.log(topic_name+"/grid", rr.LineStrips2D([hull_points.tolist()], class_ids=[grid_id], radii=[2]))
+                    grid_corners.append(hull_points.tolist())
+                    grid_radiis.append(1.0)
+                    grid_classes.append(grid_id)
 
-                if len(grid_points) == 0:
-                    rr.log(topic_name+"/grid", rr.LineStrips2D([]))
-
+                rr.log(topic_name+"/grid", rr.LineStrips2D(grid_corners, class_ids=grid_classes, radii=grid_radiis))
                 rr.log(topic_name, rr.LineStrips2D(corners_list, class_ids=ids, radii=radiis))
                 # https://ref.rerun.io/docs/python/0.11.0/common/archetypes/#rerun.archetypes.LineStrips2D
 
