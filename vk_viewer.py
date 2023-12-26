@@ -358,8 +358,8 @@ def main():
 
     rr.log("S0/grid", rr.LineStrips3D(points, radii=[0.01]))
 
-    image_logger = ImageLogger(["S0/camb", "S0/camc", "S0/camd"])
-    tags_logger = TagDetectionLogger(["S0/camb/tags", "S0/camc/tags", "S0/camd/tags"])
+    image_logger = ImageLogger(["S0/cama", "S0/camb", "S0/camc", "S0/camd"])
+    tags_logger = TagDetectionLogger(["S0/cama/tags", "S0/camb/tags", "S0/camc/tags", "S0/camd/tags"])
     odometry_logger = OdometryLogeer(["S0/vio_odom"])
 
 
