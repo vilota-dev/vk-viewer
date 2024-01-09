@@ -51,7 +51,10 @@ class ImageLogger:
             rr.log(topic_name, rr.DisconnectedSpace())
             # rr.log(topic_name + "/image", rr.Pinhole(focal_length=300, width=imageMsg.width*2//3, height=imageMsg.height), timeless=True)
             
-            rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]*2//3]))
+            if imageMsg.mipMapLevels == 0:
+                rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]]))
+            else:
+                rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]*2//3]))
 
             # some debugging drawings
             # rr.log(topic_name + "/image", rr.Boxes2D(mins=[10,20], sizes=[20,40]))
@@ -203,8 +206,13 @@ class TagDetectionLogger:
                 imgMsg, _ = assemble[topic_name]
 
                 mat = ImageLogger.image_msg_to_cvmat(imgMsg)
+
+                print (imgMsg.mipMapLevels )
                 
-                rr.log(topic_name + "/tags/image", rr.Image(mat[:, :mat.shape[1]*2//3]))
+                if imgMsg.mipMapLevels == 0:
+                    rr.log(topic_name + "/tags/image", rr.Image(mat))
+                else:
+                    rr.log(topic_name + "/tags/image", rr.Image(mat[:, :mat.shape[1]*2//3]))
 
     def decode_tag_corners(self, tag, img_width, img_height):
         corners = np.zeros((5,2))
@@ -358,7 +366,7 @@ def main():
 
     rr.log("S0/grid", rr.LineStrips3D(points, radii=[0.01]))
 
-    image_logger = ImageLogger(["S0/cama", "S0/camb", "S0/camc", "S0/camd"])
+    image_logger = ImageLogger(["S0/cama", "S0/camb", "S0/camc", "S0/camd", "S0/stereo1_l" , "S0/stereo2_r"])
     tags_logger = TagDetectionLogger(["S0/cama/tags", "S0/camb/tags", "S0/camc/tags", "S0/camd/tags"])
     odometry_logger = OdometryLogeer(["S0/vio_odom"])
 
