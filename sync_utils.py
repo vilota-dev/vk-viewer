@@ -14,7 +14,7 @@ class SyncedSubscriber:
         # store individual incoming messages
         self.queues = {}
         # store properly synced messages
-        self.synced_queue = queue.Queue(150)
+        self.synced_queue = queue.Queue(5)
         self.enforce_sync = enforce_sync
         self.callbacks = []
         

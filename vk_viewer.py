@@ -206,8 +206,6 @@ class TagDetectionLogger:
                 imgMsg, _ = assemble[topic_name]
 
                 mat = ImageLogger.image_msg_to_cvmat(imgMsg)
-
-                print (imgMsg.mipMapLevels )
                 
                 if imgMsg.mipMapLevels == 0:
                     rr.log(topic_name + "/tags/image", rr.Image(mat))
@@ -332,7 +330,7 @@ def main():
     ecal_core.set_process_state(1, 1, "I feel good")
 
     rr.init("vk_viewer_rr")
-    rr.spawn(memory_limit='10%')
+    rr.spawn(memory_limit='200MB')
     # rr.serve()
     rr.set_time_seconds("host_monotonic_time", time.monotonic_ns())
 
