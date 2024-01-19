@@ -10,12 +10,13 @@ from scipy.spatial import ConvexHull
 
 import ecal.core.core as ecal_core
 
-capnp.add_import_hook(['thirdparty/ecal_common/src/capnp'])
+capnp.add_import_hook(['thirdparty/vk_common/capnp'])
 
 import image_capnp as eCALImage
 import imu_capnp as eCALImu
 import tagdetection_capnp as eCALTagDetection
 import odometry3d_capnp as eCALOdometry3d
+import flow2d_capnp as eCALFlow2d
 
 from capnp_subscriber import CapnpSubscriber
 
@@ -155,6 +156,8 @@ class TagDetectionLogger:
                     img_width = tagsMsg.image.width * 2 // 3
                 image_height = tagsMsg.image.height
 
+                base_radii = int(min(img_width, image_height) * 0.005)
+
                 ids = []
                 corners_list = []
                 radiis = []
@@ -162,7 +165,7 @@ class TagDetectionLogger:
 
                 for tag in tagsMsg.tags:
                     ids.append(tag.id)
-                    radiis.append(1.0)
+                    radiis.append(base_radii)
                     corners = self.decode_tag_corners(tag, img_width, image_height)
                     corners_list.append(corners)
 
@@ -319,6 +322,69 @@ class OdometryLogeer:
         # rr.log("camera", rr.ViewCoordinates.RDF, timeless=True)  # X=Right, Y=Down, Z=Forward
 
 
+class Flow2dLogger:
+    def __init__(self, topic_list) -> None:
+        self.subs = []
+        for topic in topic_list:
+            sub = CapnpSubscriber("HFOpticalFlowResult", topic)
+            self.subs.append(sub)
+            sub.set_callback(self.callback)
+
+    def callback(self, topic_type, topic_name, msg, ts):
+        # print(f"callback of topic {topic_name}")
+
+        with eCALFlow2d.HFOpticalFlowResult.from_bytes(msg) as resultMsg:
+
+            # print(f"HFOpticalFlowResult stamp {resultMsg.header.stamp}")
+
+            rr.set_time_nanos("host_monotonic_time", resultMsg.header.stamp)
+
+            width = resultMsg.image.width
+            height = resultMsg.image.height
+            if resultMsg.image.mipMapLevels > 0:
+                width = width * 2 / 3
+
+            image_topic_name = remove_after_last_slash(topic_name)
+
+            points_with_level = dict()
+            ids_with_level = dict()
+            colors_with_level = dict()
+
+            base_radii = int(min(width, height) * 0.005)
+
+            for flow2d in resultMsg.flowData:
+
+                if flow2d.age < 3:
+                    continue
+
+                if flow2d.level not in points_with_level:
+                    points_with_level[flow2d.level] = list()
+                    ids_with_level[flow2d.level] = list()
+                    color_shift = int(min(255, flow2d.level * 125))
+                    colors_with_level[flow2d.level] = [int(color_shift), int(max(0, 255 - 2 * color_shift)) , int(color_shift / 2), 255]
+
+
+                x = flow2d.position.x * width
+                y = flow2d.position.y * height
+
+                points_with_level[flow2d.level].append([x,y])
+                ids_with_level[flow2d.level].append(flow2d.id % 10000) # control range
+
+            for level in points_with_level:
+                points = points_with_level[level]
+                # print(f"level {level}, {points}")
+                assert len(ids_with_level[level]) == len(points_with_level[level])
+                rr.log(topic_name, rr.Points2D(points, radii= base_radii * (2 ** level), colors=colors_with_level[level], class_ids=ids_with_level[level]))
+        
+            # # we have to ways to prevent all images drawn to the same screen
+            # rr.log(topic_name, rr.DisconnectedSpace())
+            # # rr.log(topic_name + "/image", rr.Pinhole(focal_length=300, width=imageMsg.width*2//3, height=imageMsg.height), timeless=True)
+            
+            # if imageMsg.mipMapLevels == 0:
+            #     rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]]))
+            # else:
+            #     rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]*2//3]))
+
 def main():  
 
     print("eCAL {} ({})\n".format(ecal_core.getversion(), ecal_core.getdate()))
@@ -367,6 +433,7 @@ def main():
     image_logger = ImageLogger(["S0/cama", "S0/camb", "S0/camc", "S0/camd", "S0/stereo1_l" , "S0/stereo2_r"])
     tags_logger = TagDetectionLogger(["S0/cama/tags", "S0/camb/tags", "S0/camc/tags", "S0/camd/tags"])
     odometry_logger = OdometryLogeer(["S0/vio_odom"])
+    flow2d_logger = Flow2dLogger(["S0/camd/hfflow","S0/stereo1_l/hfflow" , "S0/stereo2_r/hfflow"])
 
 
     def handler(signum, frame):
