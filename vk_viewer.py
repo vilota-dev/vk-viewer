@@ -350,12 +350,18 @@ class Flow2dLogger:
             ids_with_level = dict()
             colors_with_level = dict()
 
+            predictions_by_id = dict()
+            history_pos_by_id = dict()
+            history_seq_by_id = dict()
+
             base_radii = int(min(width, height) * 0.005)
 
             for flow2d in resultMsg.flowData:
 
                 if flow2d.age < 3:
                     continue
+
+                id = flow2d.id
 
                 if flow2d.level not in points_with_level:
                     points_with_level[flow2d.level] = list()
@@ -370,20 +376,40 @@ class Flow2dLogger:
                 points_with_level[flow2d.level].append([x,y])
                 ids_with_level[flow2d.level].append(flow2d.id % 10000) # control range
 
+                for history_item in flow2d.history:
+                    if history_item.seq == 0:
+                        predictions_by_id[id] = [history_item.position.x * width, history_item.position.y * height]
+                    else:
+                        if id not in history_pos_by_id:
+                            history_pos_by_id[id] = list()
+                            history_pos_by_id[id].append([x, y])
+                            history_seq_by_id[id] = list()
+                            history_seq_by_id[id].append(0)
+                        history_pos_by_id[id].append([history_item.position.x * width, history_item.position.y * height])
+                        history_seq_by_id[id].append(history_item.seq)
+                    
+
             for level in points_with_level:
                 points = points_with_level[level]
                 # print(f"level {level}, {points}")
                 assert len(ids_with_level[level]) == len(points_with_level[level])
-                rr.log(topic_name, rr.Points2D(points, radii= base_radii * (2 ** level), colors=colors_with_level[level], class_ids=ids_with_level[level]))
+                rr.log(topic_name + '/current', rr.Points2D(points, radii = base_radii, colors=colors_with_level[level], class_ids=ids_with_level[level]))
         
-            # # we have to ways to prevent all images drawn to the same screen
-            # rr.log(topic_name, rr.DisconnectedSpace())
-            # # rr.log(topic_name + "/image", rr.Pinhole(focal_length=300, width=imageMsg.width*2//3, height=imageMsg.height), timeless=True)
+            # logging prediction
+            predictions = list()
+            ids = list()
+            for id in predictions_by_id:
+                predictions.append(predictions_by_id[id])
+                ids.append(id)
+            if len(predictions_by_id):
+                rr.log(topic_name + '/prediction', rr.Points2D(predictions, radii = base_radii / 2, colors=[255,255,255,255]))
             
-            # if imageMsg.mipMapLevels == 0:
-            #     rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]]))
-            # else:
-            #     rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]*2//3]))
+            # logging history
+            positions = list()
+            for id in history_pos_by_id:
+                positions.append(history_pos_by_id[id])
+            
+            rr.log(topic_name + '/history', rr.LineStrips2D(positions, radii=base_radii/4, colors=[255,255,255,255]))
 
 def main():  
 
