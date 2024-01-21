@@ -354,7 +354,7 @@ class Flow2dLogger:
             history_pos_by_id = dict()
             history_seq_by_id = dict()
 
-            base_radii = int(min(width, height) * 0.005)
+            base_radii = int(min(width, height) * 0.008)
 
             for flow2d in resultMsg.flowData:
 
@@ -364,17 +364,31 @@ class Flow2dLogger:
                 id = flow2d.id
 
                 if flow2d.level not in points_with_level:
-                    points_with_level[flow2d.level] = list()
-                    ids_with_level[flow2d.level] = list()
+                    points_with_level[flow2d.level] = dict()
+                    points_with_level[flow2d.level]["stereo"] = list()
+                    points_with_level[flow2d.level]["mono"] = list()
+                    ids_with_level[flow2d.level] = dict()
+                    ids_with_level[flow2d.level]["stereo"] = list()
+                    ids_with_level[flow2d.level]["mono"] = list()
                     color_shift = int(min(255, flow2d.level * 125))
-                    colors_with_level[flow2d.level] = [int(color_shift), int(max(0, 255 - 2 * color_shift)) , int(color_shift / 2), 255]
+                    colors_with_level[flow2d.level] = { 
+                        "mono" : [int(color_shift), int(max(0, 255 - 2 * color_shift)) , int(color_shift / 2), 255],
+                        "stereo" : [int(max(0, 255 - 2 * color_shift)), int(color_shift / 2) , int(color_shift) , 255]
+                    }
 
 
                 x = flow2d.position.x * width
                 y = flow2d.position.y * height
 
-                points_with_level[flow2d.level].append([x,y])
-                ids_with_level[flow2d.level].append(flow2d.id % 10000) # control range
+                # check if it is a stereo point
+                is_stereo = (flow2d.detectorMethod == eCALFlow2d.Flow2d.DetectorMethod.sparseStereo)
+
+                if is_stereo:
+                    points_with_level[flow2d.level]["stereo"].append([x,y])
+                    ids_with_level[flow2d.level]["stereo"].append(flow2d.id % 10000) # control range
+                else:
+                    points_with_level[flow2d.level]["mono"].append([x,y])
+                    ids_with_level[flow2d.level]["mono"].append(flow2d.id % 10000) # control range
 
                 for history_item in flow2d.history:
                     if history_item.seq == 0:
@@ -390,10 +404,12 @@ class Flow2dLogger:
                     
 
             for level in points_with_level:
-                points = points_with_level[level]
-                # print(f"level {level}, {points}")
-                assert len(ids_with_level[level]) == len(points_with_level[level])
-                rr.log(topic_name + '/current', rr.Points2D(points, radii = base_radii, colors=colors_with_level[level], class_ids=ids_with_level[level]))
+
+                for type, radii in [("stereo", int(base_radii * 1.5)), ("mono", base_radii)]:
+                    points = points_with_level[level][type]
+                    # print(f"level {level}, {points}")
+                    assert len(ids_with_level[level][type]) == len(points_with_level[level][type])
+                    rr.log(topic_name + '/current' + "/" + type, rr.Points2D(points, radii = radii, colors=colors_with_level[level][type], class_ids=ids_with_level[level][type]))
         
             # logging prediction
             predictions = list()
