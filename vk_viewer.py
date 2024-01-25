@@ -137,6 +137,15 @@ class TagDetectionLogger:
                     has_tags = True
                     if tag.gridId > 0: # proper hash checked
                         has_grids = True
+            else: # assume image
+                imgMsg, _ = assemble[topic_name]
+                img_width = imgMsg.width
+                image_height = imgMsg.height
+
+                if imgMsg.mipMapLevels > 0:
+                    img_width = img_width * 2 // 3
+
+                # print(f"{img_width} {image_height}")
 
         if not has_tags:
             return
@@ -149,12 +158,6 @@ class TagDetectionLogger:
                 rr.log(topic_name, rr.DisconnectedSpace())
 
                 tagsMsg, msgRaw = assemble[topic_name]
-                # obtain image size
-                if tagsMsg.image.mipMapLevels == 0:
-                    img_width = tagsMsg.image.width
-                else:
-                    img_width = tagsMsg.image.width * 2 // 3
-                image_height = tagsMsg.image.height
 
                 base_radii = int(min(img_width, image_height) * 0.005)
 
@@ -326,23 +329,37 @@ class Flow2dLogger:
     def __init__(self, topic_list) -> None:
         self.subs = []
         for topic in topic_list:
-            sub = CapnpSubscriber("HFOpticalFlowResult", topic)
-            self.subs.append(sub)
-            sub.set_callback(self.callback)
+            topics = [topic, remove_after_last_slash(topic)]
+            types = ["HFOpticalFlowResult", "Image"]
+            type_classes = [eCALFlow2d.HFOpticalFlowResult , eCALImage.Image]
 
-    def callback(self, topic_type, topic_name, msg, ts):
+            sub = SyncedSubscriber(types, topics, type_classes)
+            self.subs.append(sub)
+            sub.register_callback(self.callback)
+
+    def callback(self, assemble, index):
         # print(f"callback of topic {topic_name}")
 
-        with eCALFlow2d.HFOpticalFlowResult.from_bytes(msg) as resultMsg:
+        for topic_name in assemble:
+            if "hfflow" in topic_name:
+                pass
+            else: # assume image
+                imgMsg, _ = assemble[topic_name]
+                width = imgMsg.width
+                height = imgMsg.height
+
+                if imgMsg.mipMapLevels > 0:
+                    width = width * 2 // 3
+
+        for topic_name in assemble:
+            if "hfflow" in topic_name:
+                resultMsg, _ = assemble[topic_name]
+            else:
+                continue
 
             # print(f"HFOpticalFlowResult stamp {resultMsg.header.stamp}")
 
             rr.set_time_nanos("host_monotonic_time", resultMsg.header.stamp)
-
-            width = resultMsg.image.width
-            height = resultMsg.image.height
-            if resultMsg.image.mipMapLevels > 0:
-                width = width * 2 / 3
 
             image_topic_name = remove_after_last_slash(topic_name)
 
