@@ -314,6 +314,9 @@ class OdometryLogeer:
             rr.set_time_nanos("host_monotonic_time", odomMsg.header.stamp)
             rr.log("S0/body", rr.Transform3D(translation=t_body, rotation=rr.Quaternion(xyzw=q_body)))
 
+            rr.log("S0/body/vision_failure_likelihood", rr.TimeSeriesScalar(odomMsg.metricVisionFailureLikelihood, color=[255, 0, 0]))
+            rr.log("S0/body/estimated_failure_mode_drift", rr.TimeSeriesScalar(odomMsg.estimatedFailureModeDrift, color=[0, 255, 0]))
+
             if (self.counts[topic_name] % 50) == 0:
                 rr.log("logs", rr.TextLog(f"current pos [{t_body[0]:.2f}, {t_body[1]:.2f}, {t_body[2]:.2f}], total distance = {self.total_distance[topic_name]:.1f}", level=rr.TextLogLevel.DEBUG))
 
