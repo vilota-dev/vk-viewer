@@ -279,6 +279,7 @@ class OdometryLogeer:
         self.subs = []
         self.counts = {}
         self.tracks = {}
+        self.tracks_color = {}
         self.total_distance = {}
         for topic in topic_list:
             sub = CapnpSubscriber("Odometry3d", topic)
@@ -295,10 +296,20 @@ class OdometryLogeer:
             # print(f"position = {odomMsg.pose.position.x}, {odomMsg.pose.position.y}, {odomMsg.pose.position.z}")
             # print(f"orientation = {odomMsg.pose.orientation.w}, {odomMsg.pose.orientation.x}, {odomMsg.pose.orientation.y}, {odomMsg.pose.orientation.z}")
 
+            failure_likelihood = max(odomMsg.metricVisionFailureLikelihood, odomMsg.metricInertialFailureLikelihood)
+
             if topic_name not in self.counts:
                 self.counts[topic_name] = 0
                 self.tracks[topic_name] = []
-                self.tracks[topic_name].append(t_body)
+                self.tracks[topic_name].append([])
+                self.tracks[topic_name][-1].append(t_body)
+                self.tracks_color[topic_name] = []
+                if failure_likelihood >= 0.9:
+                    self.tracks_color[topic_name].append([255,0,0])
+                elif failure_likelihood >= 0.5:
+                    self.tracks_color[topic_name].append([255,255,0])
+                else:
+                    self.tracks_color[topic_name].append([0,255,0])
                 self.total_distance[topic_name] = 0
                 rr.log("S0", rr.ViewCoordinates.FLU, timeless=True)
             else:
@@ -306,10 +317,31 @@ class OdometryLogeer:
                 distance = np.linalg.norm(np.array(self.tracks[topic_name][-1]) - np.array(t_body))
 
                 if distance > 0.05:
-                    self.tracks[topic_name].append(t_body)
+
+                    # check color switching
+                    was_failing = self.tracks_color[topic_name][-1] == [255,0,0]
+                    was_warning = self.tracks_color[topic_name][-1] == [255,255,0]
+
+                    if was_failing:
+                        if failure_likelihood < 0.8:
+                            self.tracks[topic_name].append([self.tracks[topic_name][-1][-1]])
+                            self.tracks_color[topic_name].append([255,255,0])
+                    elif was_warning:
+                        if failure_likelihood < 0.4:
+                            self.tracks[topic_name].append([self.tracks[topic_name][-1][-1]])
+                            self.tracks_color[topic_name].append([0,255,0])
+                        elif failure_likelihood > 0.9:
+                            self.tracks[topic_name].append([self.tracks[topic_name][-1][-1]])
+                            self.tracks_color[topic_name].append([255,0,0])
+                    else:
+                        if failure_likelihood > 0.5:
+                            self.tracks[topic_name].append([self.tracks[topic_name][-1][-1]])
+                            self.tracks_color[topic_name].append([255,255,0])
+
+                    self.tracks[topic_name][-1].append(t_body)
                     self.total_distance[topic_name] += distance
                     # print(self.tracks[topic_name])
-                    rr.log("S0/tracks", rr.LineStrips3D(self.tracks[topic_name]))
+                    rr.log("S0/tracks", rr.LineStrips3D(self.tracks[topic_name], colors=self.tracks_color[topic_name]))
 
             rr.set_time_nanos("host_monotonic_time", odomMsg.header.stamp)
             rr.log("S0/body", rr.Transform3D(translation=t_body, rotation=rr.Quaternion(xyzw=q_body)))
