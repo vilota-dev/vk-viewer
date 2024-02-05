@@ -315,6 +315,7 @@ class OdometryLogeer:
             rr.log("S0/body", rr.Transform3D(translation=t_body, rotation=rr.Quaternion(xyzw=q_body)))
 
             rr.log("S0/body/vision_failure_likelihood", rr.TimeSeriesScalar(odomMsg.metricVisionFailureLikelihood, color=[255, 0, 0]))
+            rr.log("S0/body/imu_failure_likelihood", rr.TimeSeriesScalar(odomMsg.metricInertialFailureLikelihood, color=[0, 0, 255]))
             rr.log("S0/body/estimated_failure_mode_drift", rr.TimeSeriesScalar(odomMsg.estimatedFailureModeDrift, color=[0, 255, 0]))
 
             if (self.counts[topic_name] % 50) == 0:
