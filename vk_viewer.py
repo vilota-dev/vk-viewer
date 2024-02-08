@@ -525,7 +525,7 @@ def main():
 
     rr.log("S0/grid", rr.LineStrips3D(points, radii=[0.01]))
 
-    image_logger = ImageLogger(["S0/cama", "S0/camb", "S0/camc", "S0/camd", "S0/stereo1_l" , "S0/stereo2_r"])
+    image_logger = ImageLogger(["S0/cama", "S0/camb", "S0/camc", "S0/camd", "S0/stereo1_l" , "S0/stereo2_r", "S1/camd", "S1/stereo1_r" , "S1/stereo2_l"])
     tags_logger = TagDetectionLogger(["S0/cama/tags", "S0/camb/tags", "S0/camc/tags", "S0/camd/tags"])
     odometry_logger = OdometryLogeer(["S0/vio_odom"])
     flow2d_logger = Flow2dLogger(["S0/cama/hfflow","S0/camb/hfflow","S0/camc/hfflow","S0/camd/hfflow","S0/stereo1_l/hfflow" , "S0/stereo2_r/hfflow"])
