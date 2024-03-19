@@ -49,13 +49,14 @@ class ImageLogger:
             rr.set_time_nanos("host_monotonic_time", imageMsg.header.stamp)
         
             # we have to ways to prevent all images drawn to the same screen
-            rr.log(topic_name, rr.DisconnectedSpace())
+            # since rerun v0.13, DisconnectedSpace is broken
+            # rr.log(topic_name, rr.DisconnectedSpace())
             # rr.log(topic_name + "/image", rr.Pinhole(focal_length=300, width=imageMsg.width*2//3, height=imageMsg.height), timeless=True)
             
             if imageMsg.mipMapLevels == 0:
-                rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]]))
+                rr.log(topic_name + "/raw", rr.Image(mat[:, :mat.shape[1]]))
             else:
-                rr.log(topic_name, rr.Image(mat[:, :mat.shape[1]*2//3]))
+                rr.log(topic_name + "/raw", rr.Image(mat[:, :mat.shape[1]*2//3]))
 
             # some debugging drawings
             # rr.log(topic_name + "/image", rr.Boxes2D(mins=[10,20], sizes=[20,40]))
@@ -154,8 +155,8 @@ class TagDetectionLogger:
 
         for topic_name in assemble:
             if "tags" in topic_name:
-
-                rr.log(topic_name, rr.DisconnectedSpace())
+                # since v0.13 of rerun, DisconnectedSpace is broken
+                # rr.log(topic_name, rr.DisconnectedSpace())
 
                 tagsMsg, msgRaw = assemble[topic_name]
 
@@ -193,17 +194,17 @@ class TagDetectionLogger:
                     grid_radiis.append(1.0)
                     grid_classes.append(grid_id)
 
-                rr.log(topic_name+"/grid", rr.LineStrips2D(grid_corners, class_ids=grid_classes, radii=grid_radiis))
-                rr.log(topic_name, rr.LineStrips2D(corners_list, class_ids=ids, radii=radiis))
+                rr.log(topic_name + "/tags/grid", rr.LineStrips2D(grid_corners, class_ids=grid_classes, radii=grid_radiis))
+                rr.log(topic_name + "/tags/tag", rr.LineStrips2D(corners_list, class_ids=ids, radii=radiis))
                 # https://ref.rerun.io/docs/python/0.11.0/common/archetypes/#rerun.archetypes.LineStrips2D
 
                 if has_tags:
                     self.tag_frame_count += 1
-                rr.log(topic_name, rr.AnyValues(tag_frame_count=self.tag_frame_count))
+                rr.log(topic_name + "/tags", rr.AnyValues(tag_frame_count=self.tag_frame_count))
 
                 if has_grids:
                     self.grid_frame_count += 1
-                rr.log(topic_name, rr.AnyValues(grid_frame_count=self.grid_frame_count))
+                rr.log(topic_name + "/tags", rr.AnyValues(grid_frame_count=self.grid_frame_count))
 
                 if not self.queue.full():
                     stamp_ns = tagsMsg.header.stamp
@@ -214,9 +215,9 @@ class TagDetectionLogger:
                 mat = ImageLogger.image_msg_to_cvmat(imgMsg)
                 
                 if imgMsg.mipMapLevels == 0:
-                    rr.log(topic_name + "/tags/image", rr.Image(mat))
+                    rr.log(topic_name + "/tags", rr.Image(mat))
                 else:
-                    rr.log(topic_name + "/tags/image", rr.Image(mat[:, :mat.shape[1]*2//3]))
+                    rr.log(topic_name + "/tags", rr.Image(mat[:, :mat.shape[1]*2//3]))
 
     def decode_tag_corners(self, tag, img_width, img_height):
         corners = np.zeros((5,2))
